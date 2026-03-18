@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeShield — AI Security Auditor</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #111318;
+    --surface2: #181c24;
+    --border: #1e2330;
+    --border2: #2a3040;
+    --text: #e8ecf4;
+    --muted: #6b7592;
+    --accent: #00ffa3;
+    --accent2: #0df;
+    --red: #ff4d6a;
+    --orange: #ff9f2e;
+    --yellow: #ffd050;
+    --green: #00ffa3;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+
+  /* Grid noise overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,163,0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,163,0.015) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container { max-width: 900px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+  /* Header */
+  header {
+    padding: 32px 0 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .logo-row { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+  .logo-icon {
+    width: 42px; height: 42px;
+    background: linear-gradient(135deg, #00ffa3, #0df);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    box-shadow: 0 0 24px rgba(0,255,163,0.3);
+  }
+  h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; }
+  h1 span { color: var(--accent); }
+  .tagline { font-size: 13px; color: var(--muted); font-family: var(--mono); margin-top: 2px; }
+
+  /* Mode tabs */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin: 28px 0 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 4px;
+  }
+  .tab {
+    flex: 1;
+    padding: 9px 0;
+    border-radius: 7px;
+    border: none;
+    background: none;
+    color: var(--muted);
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.3px;
+  }
+  .tab.active {
+    background: var(--surface2);
+    color: var(--accent);
+    border: 1px solid var(--border2);
+  }
+  .tab:hover:not(.active) { color: var(--text); }
+
+  /* Upload area */
+  .upload-panel { margin-top: 24px; }
+  .drop-zone {
+    border: 2px dashed var(--border2);
+    border-radius: 14px;
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--surface);
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(0,255,163,0.03);
+  }
+  .drop-icon { font-size: 40px; margin-bottom: 14px; }
+  .drop-title { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+  .drop-sub { font-size: 13px; color: var(--muted); font-family: var(--mono); }
+  .drop-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+  /* Code paste area */
+  .paste-panel { margin-top: 24px; display: none; }
+  .code-input {
+    width: 100%;
+    min-height: 260px;
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 14px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+    padding: 20px;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .code-input:focus { border-color: var(--accent); }
+  .code-input::placeholder { color: var(--muted); }
+
+  /* File list */
+  .file-list { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .file-item {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+  .file-icon { font-size: 16px; }
+  .file-name { flex: 1; font-family: var(--mono); color: var(--text); }
+  .file-size { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .file-remove {
+    background: none; border: none; color: var(--muted);
+    cursor: pointer; font-size: 16px; padding: 0 4px;
+    transition: color 0.15s;
+  }
+  .file-remove:hover { color: var(--red); }
+
+  /* Analyze button */
+  .analyze-btn {
+    margin-top: 20px;
+    width: 100%;
+    padding: 15px;
+    background: linear-gradient(135deg, #00ffa3, #0df);
+    border: none;
+    border-radius: 10px;
+    color: #0a0c10;
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 800;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: all 0.2s;
+    box-shadow: 0 0 24px rgba(0,255,163,0.2);
+  }
+  .analyze-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 0 36px rgba(0,255,163,0.35);
+  }
+  .analyze-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Results */
+  .results-section { margin-top: 36px; display: none; }
+  .results-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .results-title { font-size: 18px; font-weight: 800; }
+  .scan-meta { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+
+  /* Score ring */
+  .score-block {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 16px;
+    padding: 28px;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    margin-bottom: 24px;
+  }
+  .score-ring { flex-shrink: 0; }
+  .score-info { flex: 1; }
+  .score-label { font-size: 12px; color: var(--muted); font-family: var(--mono); margin-bottom: 6px; letter-spacing: 1px; text-transform: uppercase; }
+  .score-value { font-size: 42px; font-weight: 800; line-height: 1; margin-bottom: 8px; }
+  .score-desc { font-size: 14px; color: var(--muted); line-height: 1.5; }
+  .vuln-counts { display: flex; gap: 16px; margin-top: 16px; flex-wrap: wrap; }
+  .vuln-count-item {
+    padding: 6px 14px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: var(--mono);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .count-critical { background: rgba(255,77,106,0.12); color: var(--red); border: 1px solid rgba(255,77,106,0.2); }
+  .count-high     { background: rgba(255,159,46,0.12); color: var(--orange); border: 1px solid rgba(255,159,46,0.2); }
+  .count-medium   { background: rgba(255,208,80,0.12); color: var(--yellow); border: 1px solid rgba(255,208,80,0.2); }
+  .count-low      { background: rgba(0,255,163,0.1); color: var(--green); border: 1px solid rgba(0,255,163,0.15); }
+
+  /* Finding cards */
+  .findings { display: flex; flex-direction: column; gap: 14px; }
+  .finding {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .finding:hover { border-color: var(--border2); }
+  .finding-header {
+    padding: 16px 20px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .severity-badge {
+    padding: 3px 10px;
+    border-radius: 5px;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: var(--mono);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .sev-critical { background: rgba(255,77,106,0.15); color: var(--red); border: 1px solid rgba(255,77,106,0.3); }
+  .sev-high     { background: rgba(255,159,46,0.15); color: var(--orange); border: 1px solid rgba(255,159,46,0.3); }
+  .sev-medium   { background: rgba(255,208,80,0.15); color: var(--yellow); border: 1px solid rgba(255,208,80,0.3); }
+  .sev-low      { background: rgba(0,255,163,0.1); color: var(--green); border: 1px solid rgba(0,255,163,0.2); }
+  .finding-title-block { flex: 1; }
+  .finding-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+  .finding-loc { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  .finding-chevron { color: var(--muted); transition: transform 0.2s; font-size: 14px; padding-top: 2px; }
+  .finding.open .finding-chevron { transform: rotate(180deg); }
+
+  .finding-body { display: none; padding: 0 20px 20px; border-top: 1px solid var(--border); }
+  .finding.open .finding-body { display: block; }
+
+  .section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 16px 0 8px;
+    font-family: var(--mono);
+  }
+  .finding-desc { font-size: 13px; color: #b0b8cc; line-height: 1.65; }
+  .code-block {
+    background: #0d1018;
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+    color: #e8ecf4;
+  }
+  .code-block .hl { background: rgba(255,77,106,0.2); border-left: 3px solid var(--red); margin-left: -14px; padding-left: 11px; display: block; }
+  .fix-block {
+    background: rgba(0,255,163,0.04);
+    border: 1px solid rgba(0,255,163,0.12);
+    border-radius: 8px;
+    padding: 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.6;
+    overflow-x: auto;
+    white-space: pre;
+    color: #00ffa3;
+  }
+  .impact-tag {
+    display: inline-block;
+    background: rgba(13,221,255,0.1);
+    border: 1px solid rgba(13,221,255,0.2);
+    color: var(--accent2);
+    padding: 4px 10px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-family: var(--mono);
+    margin: 0 4px 4px 0;
+  }
+
+  /* Summary block */
+  .summary-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-top: 24px;
+    margin-bottom: 8px;
+  }
+  .summary-block h3 { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
+  .summary-block p { font-size: 13px; color: #b0b8cc; line-height: 1.65; }
+
+  /* Loading */
+  .loading-overlay {
+    display: none;
+    margin-top: 28px;
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 16px;
+    padding: 40px;
+    text-align: center;
+  }
+  .loading-overlay.visible { display: block; }
+  .loader-bars {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 4px;
+    height: 40px;
+    margin-bottom: 20px;
+  }
+  .bar {
+    width: 6px;
+    border-radius: 3px;
+    background: var(--accent);
+    animation: pulse 1s ease-in-out infinite;
+  }
+  .bar:nth-child(1) { animation-delay: 0s; }
+  .bar:nth-child(2) { animation-delay: 0.15s; }
+  .bar:nth-child(3) { animation-delay: 0.3s; }
+  .bar:nth-child(4) { animation-delay: 0.45s; }
+  .bar:nth-child(5) { animation-delay: 0.6s; }
+  @keyframes pulse {
+    0%,100% { height: 8px; opacity: 0.3; }
+    50% { height: 36px; opacity: 1; }
+  }
+  .loading-text { font-size: 14px; color: var(--muted); font-family: var(--mono); }
+  .loading-phase { font-size: 12px; color: var(--accent); font-family: var(--mono); margin-top: 6px; }
+
+  /* Error */
+  .error-box {
+    display: none;
+    background: rgba(255,77,106,0.08);
+    border: 1px solid rgba(255,77,106,0.25);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--red);
+    font-family: var(--mono);
+  }
+  .error-box.visible { display: block; }
+
+  /* Reset button */
+  .reset-btn {
+    background: none;
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-top: 24px;
+    display: block;
+  }
+  .reset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  footer {
+    margin-top: auto;
+    padding: 28px 0 24px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+    border-top: 1px solid var(--border);
+    position: relative; z-index: 1;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo-row">
+      <div class="logo-icon">🛡️</div>
+      <h1>Code<span>Shield</span></h1>
+    </div>
+    <div class="tagline">// AI-powered ethical security auditor — finds vulns, explains impact, gives fixes</div>
+
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('upload')">📁 Upload File</button>
+      <button class="tab" onclick="switchTab('paste')">📋 Paste Code</button>
+    </div>
+  </header>
+
+  <!-- Upload Panel -->
+  <div class="upload-panel" id="upload-panel">
+    <div class="drop-zone" id="drop-zone">
+      <input type="file" id="file-input" multiple accept=".js,.ts,.py,.php,.java,.go,.rb,.cs,.cpp,.c,.rs,.swift,.kt,.html,.jsx,.tsx,.vue,.env,.yaml,.yml,.json,.sql,.sh,.bash" onchange="handleFiles(this.files)">
+      <div class="drop-icon">📂</div>
+      <div class="drop-title">Drop your code files here</div>
+      <div class="drop-sub">Supports: JS, TS, Python, PHP, Java, Go, Ruby, C/C++, SQL, YAML, and more</div>
+    </div>
+    <div class="file-list" id="file-list"></div>
+  </div>
+
+  <!-- Paste Panel -->
+  <div class="paste-panel" id="paste-panel">
+    <textarea class="code-input" id="code-input" placeholder="// Paste your code, config file, or app logic here...
+// e.g. API keys, SQL queries, authentication logic, file uploads, user input handling...
+
+function login(username, password) {
+  const query = `SELECT * FROM users WHERE username='${username}'`;
+  ...
+}"></textarea>
+    <input type="text" class="code-input" id="lang-hint" placeholder="Language/type (optional): Python, JavaScript, SQL, YAML..." style="min-height:auto;height:42px;margin-top:8px;font-size:12px;padding:10px 14px">
+  </div>
+
+  <div class="error-box" id="error-box"></div>
+
+  <button class="analyze-btn" id="analyze-btn" onclick="runAnalysis()" disabled>
+    🔍 Scan for Vulnerabilities
+  </button>
+
+  <!-- Loading -->
+  <div class="loading-overlay" id="loading">
+    <div class="loader-bars">
+      <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+      <div class="bar"></div><div class="bar"></div>
+    </div>
+    <div class="loading-text">CodeShield is scanning your code...</div>
+    <div class="loading-phase" id="loading-phase">Initializing ethical hacker mode</div>
+  </div>
+
+  <!-- Results -->
+  <div class="results-section" id="results">
+    <div class="results-header">
+      <div class="results-title">Security Audit Report</div>
+      <div class="scan-meta" id="scan-meta"></div>
+    </div>
+
+    <div class="score-block">
+      <svg class="score-ring" width="90" height="90" viewBox="0 0 90 90">
+        <circle cx="45" cy="45" r="38" fill="none" stroke="#1e2330" stroke-width="7"/>
+        <circle id="score-circle" cx="45" cy="45" r="38" fill="none" stroke="#00ffa3"
+          stroke-width="7" stroke-linecap="round"
+          stroke-dasharray="239" stroke-dashoffset="239"
+          transform="rotate(-90 45 45)" style="transition:stroke-dashoffset 1s ease"/>
+        <text x="45" y="49" text-anchor="middle" font-family="Syne" font-weight="800" font-size="19" fill="#e8ecf4" id="score-text">—</text>
+      </svg>
+      <div class="score-info">
+        <div class="score-label">Security Score</div>
+        <div class="score-value" id="score-display">—</div>
+        <div class="score-desc" id="score-desc"></div>
+        <div class="vuln-counts" id="vuln-counts"></div>
+      </div>
+    </div>
+
+    <div class="findings" id="findings"></div>
+    <div class="summary-block" id="summary-block" style="display:none">
+      <h3>🔐 Hacker's Recommendation</h3>
+      <p id="summary-text"></p>
+    </div>
+
+    <button class="reset-btn" onclick="resetAll()">← New Scan</button>
+  </div>
+</div>
+
+<footer>
+  CodeShield · Powered by Claude AI · Scans run locally in your browser · No code stored
+</footer>
+
+<script>
+let currentTab = 'upload';
+let uploadedFiles = [];
+let phases = [
+  'Initializing ethical hacker mode',
+  'Parsing code structure & logic',
+  'Checking injection vulnerabilities',
+  'Scanning authentication & session flaws',
+  'Detecting exposed secrets & keys',
+  'Analyzing input validation gaps',
+  'Running OWASP Top 10 checks',
+  'Generating fix recommendations',
+  'Compiling security report...'
+];
+let phaseTimer;
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', (i===0&&tab==='upload')||(i===1&&tab==='paste')));
+  document.getElementById('upload-panel').style.display = tab === 'upload' ? 'block' : 'none';
+  document.getElementById('paste-panel').style.display = tab === 'paste' ? 'block' : 'none';
+  checkReady();
+}
+
+function handleFiles(files) {
+  for (const f of files) uploadedFiles.push(f);
+  renderFileList();
+  checkReady();
+}
+
+function renderFileList() {
+  const list = document.getElementById('file-list');
+  list.innerHTML = uploadedFiles.map((f,i) => `
+    <div class="file-item">
+      <span class="file-icon">${getFileIcon(f.name)}</span>
+      <span class="file-name">${f.name}</span>
+      <span class="file-size">${formatSize(f.size)}</span>
+      <button class="file-remove" onclick="removeFile(${i})">✕</button>
+    </div>`).join('');
+}
+
+function removeFile(i) {
+  uploadedFiles.splice(i, 1);
+  renderFileList();
+  checkReady();
+}
+
+function getFileIcon(name) {
+  const ext = name.split('.').pop().toLowerCase();
+  const map = {js:'🟨',ts:'🔷',py:'🐍',php:'🐘',java:'☕',go:'🐹',rb:'💎',cs:'🔵',cpp:'⚙️',c:'⚙️',rs:'🦀',swift:'🍎',kt:'🟣',html:'🌐',vue:'💚',sql:'🗄️',yaml:'📄',yml:'📄',json:'📋',sh:'💻',bash:'💻',env:'🔑'};
+  return map[ext] || '📄';
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/1048576).toFixed(1) + ' MB';
+}
+
+document.getElementById('drop-zone').addEventListener('dragover', e => {
+  e.preventDefault();
+  e.currentTarget.classList.add('drag-over');
+});
+document.getElementById('drop-zone').addEventListener('dragleave', e => e.currentTarget.classList.remove('drag-over'));
+document.getElementById('drop-zone').addEventListener('drop', e => {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag-over');
+  handleFiles(e.dataTransfer.files);
+});
+
+document.getElementById('code-input').addEventListener('input', checkReady);
+
+function checkReady() {
+  const btn = document.getElementById('analyze-btn');
+  if (currentTab === 'upload') btn.disabled = uploadedFiles.length === 0;
+  else btn.disabled = document.getElementById('code-input').value.trim().length < 20;
+}
+
+function startPhases() {
+  let i = 0;
+  const el = document.getElementById('loading-phase');
+  el.textContent = phases[0];
+  phaseTimer = setInterval(() => {
+    i = (i + 1) % phases.length;
+    el.textContent = phases[i];
+  }, 2200);
+}
+
+async function runAnalysis() {
+  showError('');
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('loading').classList.add('visible');
+  document.getElementById('analyze-btn').disabled = true;
+  startPhases();
+
+  let codeContent = '';
+
+  try {
+    if (currentTab === 'upload') {
+      const parts = [];
+      for (const f of uploadedFiles) {
+        const text = await f.text();
+        parts.push(`=== FILE: ${f.name} ===\n${text}`);
+      }
+      codeContent = parts.join('\n\n');
+    } else {
+      const lang = document.getElementById('lang-hint').value.trim();
+      codeContent = (lang ? `[Language: ${lang}]\n` : '') + document.getElementById('code-input').value;
+    }
+
+    const prompt = `You are CodeShield, an elite ethical security researcher and penetration tester. Analyze the following code thoroughly for security vulnerabilities, bugs, and breaches.
+
+Be like an ethical hacker — find real issues, explain why they're dangerous, show the attack vector, and provide concrete fixes.
+
+Return ONLY a valid JSON object in this exact structure (no markdown, no explanation outside JSON):
+
+{
+  "score": <integer 0-100, where 100 = perfectly secure>,
+  "grade": "<A+|A|B|C|D|F>",
+  "summary": "<2-3 sentence expert summary of the overall security posture>",
+  "counts": { "critical": <n>, "high": <n>, "medium": <n>, "low": <n> },
+  "findings": [
+    {
+      "id": "VULN-001",
+      "title": "<short vuln title>",
+      "severity": "<critical|high|medium|low>",
+      "location": "<filename:lineNumber or function name or area>",
+      "category": "<e.g. SQL Injection, XSS, IDOR, Hardcoded Secret, Auth Bypass, etc.>",
+      "description": "<detailed explanation of the vulnerability and how an attacker would exploit it>",
+      "impact": ["<impact 1>", "<impact 2>"],
+      "vulnerable_code": "<the exact problematic code snippet, max 6 lines>",
+      "fixed_code": "<the fixed/safe version of the code, max 8 lines>",
+      "cwe": "<CWE-XXX>"
+    }
+  ]
+}
+
+Rules:
+- findings array should have 1-12 items, ordered by severity (critical first)
+- If code is mostly safe, still provide low-severity findings if any exist (unused error handling, logging of sensitive data, etc.)
+- If no real vulnerabilities exist, return an empty findings array with score 90-100
+- The vulnerable_code and fixed_code must be actual code from the input, not generic examples
+- Be specific and actionable — this is for a developer who needs to fix their code NOW
+
+CODE TO ANALYZE:
+${codeContent.slice(0, 18000)}`;
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error?.message || `API error ${response.status}`);
+    }
+
+    const data = await response.json();
+    const raw = data.content.map(b => b.text || '').join('');
+    let report;
+    try {
+      const clean = raw.replace(/```json|```/g, '').trim();
+      const start = clean.indexOf('{');
+      const end = clean.lastIndexOf('}');
+      report = JSON.parse(clean.slice(start, end + 1));
+    } catch {
+      throw new Error('Could not parse security report. The AI returned an unexpected format.');
+    }
+
+    renderResults(report);
+
+  } catch (err) {
+    showError('Scan failed: ' + err.message);
+  } finally {
+    clearInterval(phaseTimer);
+    document.getElementById('loading').classList.remove('visible');
+    document.getElementById('analyze-btn').disabled = false;
+  }
+}
+
+function renderResults(report) {
+  const now = new Date();
+  document.getElementById('scan-meta').textContent =
+    `Scanned ${now.toLocaleDateString()} at ${now.toLocaleTimeString()}`;
+
+  // Score
+  const score = Math.max(0, Math.min(100, report.score || 0));
+  const scoreEl = document.getElementById('score-display');
+  const scoreColor = score >= 80 ? '#00ffa3' : score >= 60 ? '#ffd050' : score >= 40 ? '#ff9f2e' : '#ff4d6a';
+  scoreEl.textContent = score + '/100';
+  scoreEl.style.color = scoreColor;
+  document.getElementById('score-desc').textContent = report.summary || '';
+
+  const circle = document.getElementById('score-circle');
+  const offset = 239 - (239 * score / 100);
+  circle.style.stroke = scoreColor;
+  document.getElementById('score-text').textContent = report.grade || score;
+  setTimeout(() => circle.style.strokeDashoffset = offset, 100);
+
+  // Counts
+  const c = report.counts || {};
+  const countsEl = document.getElementById('vuln-counts');
+  countsEl.innerHTML = [
+    c.critical > 0 ? `<div class="vuln-count-item count-critical">🔴 ${c.critical} Critical</div>` : '',
+    c.high > 0 ? `<div class="vuln-count-item count-high">🟠 ${c.high} High</div>` : '',
+    c.medium > 0 ? `<div class="vuln-count-item count-medium">🟡 ${c.medium} Medium</div>` : '',
+    c.low > 0 ? `<div class="vuln-count-item count-low">🟢 ${c.low} Low</div>` : '',
+  ].join('');
+
+  // Findings
+  const findingsEl = document.getElementById('findings');
+  const findings = report.findings || [];
+  if (findings.length === 0) {
+    findingsEl.innerHTML = `<div style="text-align:center;padding:40px;color:var(--accent);font-family:var(--mono);font-size:14px">
+      ✅ No significant vulnerabilities detected.<br><span style="color:var(--muted);font-size:12px;margin-top:8px;display:block">Your code looks clean to this scanner.</span></div>`;
+  } else {
+    findingsEl.innerHTML = findings.map((f, i) => `
+      <div class="finding" id="finding-${i}">
+        <div class="finding-header" onclick="toggleFinding(${i})">
+          <span class="severity-badge sev-${f.severity}">${f.severity}</span>
+          <div class="finding-title-block">
+            <div class="finding-title">${f.id} — ${escHtml(f.title)}</div>
+            <div class="finding-loc">📍 ${escHtml(f.location || '')} · ${escHtml(f.category || '')} · ${escHtml(f.cwe || '')}</div>
+          </div>
+          <span class="finding-chevron">▼</span>
+        </div>
+        <div class="finding-body">
+          <div class="section-label">Description & Attack Vector</div>
+          <div class="finding-desc">${escHtml(f.description || '')}</div>
+
+          ${(f.impact||[]).length ? `
+          <div class="section-label">Impact</div>
+          <div>${(f.impact||[]).map(im => `<span class="impact-tag">⚡ ${escHtml(im)}</span>`).join('')}</div>` : ''}
+
+          ${f.vulnerable_code ? `
+          <div class="section-label">Vulnerable Code</div>
+          <div class="code-block">${escHtml(f.vulnerable_code)}</div>` : ''}
+
+          ${f.fixed_code ? `
+          <div class="section-label">✅ Fixed Code</div>
+          <div class="fix-block">${escHtml(f.fixed_code)}</div>` : ''}
+        </div>
+      </div>`).join('');
+
+    // Auto-open first critical/high
+    const firstSerious = findings.findIndex(f => f.severity === 'critical' || f.severity === 'high');
+    if (firstSerious >= 0) toggleFinding(firstSerious);
+  }
+
+  // Summary
+  if (report.summary) {
+    document.getElementById('summary-text').textContent = report.summary;
+    document.getElementById('summary-block').style.display = 'block';
+  }
+
+  document.getElementById('results').style.display = 'block';
+  document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function toggleFinding(i) {
+  const el = document.getElementById('finding-' + i);
+  el.classList.toggle('open');
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-box');
+  el.textContent = msg;
+  el.classList.toggle('visible', !!msg);
+}
+
+function resetAll() {
+  uploadedFiles = [];
+  renderFileList();
+  document.getElementById('code-input').value = '';
+  document.getElementById('lang-hint').value = '';
+  document.getElementById('results').style.display = 'none';
+  document.getElementById('findings').innerHTML = '';
+  showError('');
+  document.getElementById('analyze-btn').disabled = true;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+</script>
+</body>
+</html>
